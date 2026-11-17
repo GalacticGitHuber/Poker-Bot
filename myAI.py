@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from poker.action import Action
 from poker.game_state import GameState
 from poker.card import Card, Rank, Suit
@@ -33,7 +35,7 @@ OPPONENT_POOL = [
     ("go_all_in_on_ace", go_all_in_on_ace_ai),
 ]
 
-from __future__ import annotations
+
 
 import argparse
 import os
@@ -95,7 +97,7 @@ def get_active_opponents(state):
 def get_to_call(state) -> int:
     me = get_me(state)
 
-    current_bet = max((player.chips_bet for player in state.player), default = 0)
+    current_bet = max((player.chips_bet for player in state.players), default = 0)
     return max(0, current_bet - me.chips_bet)
 
 def get_raise_capacity(state) -> int:
@@ -161,12 +163,13 @@ def get_draw_features(state) -> list[float]:
     made_flush = 1.0 if max_suit_count >= 5 else 0.0
 
     straight_draw = 0.0
-    max_straight = 0.0
+    made_straight = 0.0
 
     straight_ranks = set(ranks)
 
     if 14 in straight_ranks:
         straight_ranks.add(1)
+
 
     for start in range(1,11):
         window = set(range(start, start + 5))
@@ -298,9 +301,9 @@ class ReplayBuffer:
     def sample(self, batch_size):
         batch = random.sample(self.memory, batch_size)
 
-        states = np.asarray([item.state for item in batch], dtupe = np.float32)
+        states = np.asarray([item.state for item in batch], dtype = np.float32)
         actions = np.asarray([item.action for item in batch], dtype = np.int64)
-        rewards = np.asarray([item.action for item in batch], dtype = np.float32)
+        rewards = np.asarray([item.reward for item in batch], dtype = np.float32)
         next_states = np.asarray([item.next_state for item in batch], dtype = np.float32)
         next_masks = np.asarray([item.next_mask for item in batch], dtype = np.float32)
         dones = np.asarray([item.done for item in batch], dtype = np.float32)
@@ -363,7 +366,7 @@ class DQNAgent:
 
             targets = rewards + GAMMA * next_q * (1.0 - dones)
 
-        loss = nn.functional.smooth_11_loss(current_q, targets)
+        loss = nn.functional.smooth_l1_loss(current_q, targets)
         self.optimizer.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(self.online.parameters(), 5.0)
@@ -459,7 +462,7 @@ class TrainingPolicy:
         if self.pending is None:
             return
 
-        reward = (final_stack - self.starting_stack / 200.0)
+        reward = (final_stack - self.starting_stack) / 200.0
 
         terminal_state = np.zeros(STATE_SIZE, dtype = np.float32)
         terminal_mask = np.zeros(ACTION_SIZE, dtype = np.float32)
@@ -579,4 +582,55 @@ def myAI(state) -> Action:
         if get_to_call(state) == 0:
             return Action.check()
         return Action.fold()
-    
+
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(
+        description="DQN Poker AI"
+    )
+
+    parser.add_argument(
+        "--train",
+        action="store_true",
+        help="Train the DQN against example poker AIs"
+    )
+
+    parser.add_argument(
+        "--episodes",
+        type=int,
+        default=500
+    )
+
+    parser.add_argument(
+        "--hands",
+        type=int,
+        default=100
+    )
+
+    parser.add_argument(
+        "--resume",
+        action="store_true"
+    )
+
+    parser.add_argument(
+        "--save-every",
+        type=int,
+        default=10
+    )
+
+    args = parser.parse_args()
+
+    if args.train:
+
+        train(
+            episodes=args.episodes,
+            hands_per_episode=args.hands,
+            resume=args.resume,
+            save_every=args.save_every
+        )
+
+    else:
+
+        print("DQN Poker AI ready.")
+        print("Use --train to start training.")
